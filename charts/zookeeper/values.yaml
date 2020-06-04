@@ -27,7 +27,7 @@ config: {}
   # quorumListenOnAllIPs: false
 
 persistence:
-  storageClassName: standard
+  storageClassName: baremetal-csi-sc
   # specifying reclaim policy for PersistentVolumes
   # accepted values - Delete / Retain
   reclaimPolicy: Delete
