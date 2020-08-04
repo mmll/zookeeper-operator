@@ -25,7 +25,7 @@ const (
 
 	// DefaultZkContainerVersion is the default tag used for for the zookeeper
 	// container
-	DefaultZkContainerVersion = "0.2.7"
+	DefaultZkContainerVersion = "0.2.8"
 
 	// DefaultZkContainerPolicy is the default container pull policy used
 	DefaultZkContainerPolicy = "Always"
@@ -33,7 +33,7 @@ const (
 	// DefaultTerminationGracePeriod is the default time given before the
 	// container is stopped. This gives clients time to disconnect from a
 	// specific node gracefully.
-	DefaultTerminationGracePeriod = 180
+	DefaultTerminationGracePeriod = 30
 
 	// DefaultZookeeperCacheVolumeSize is the default volume size for the
 	// Zookeeper cache volume
@@ -99,9 +99,49 @@ func (s *ZookeeperClusterSpec) withDefaults(z *ZookeeperCluster) (changed bool) 
 				Name:          "leader-election",
 				ContainerPort: 3888,
 			},
+			{
+				Name:          "metrics",
+				ContainerPort: 7000,
+			},
 		}
 		changed = true
+	} else {
+		var (
+			foundClient, foundQuorum, foundLeader, foundMetrics bool
+		)
+		for i := 0; i < len(s.Ports); i++ {
+			if s.Ports[i].Name == "client" {
+				foundClient = true
+			} else if s.Ports[i].Name == "quorum" {
+				foundQuorum = true
+			} else if s.Ports[i].Name == "leader-election" {
+				foundLeader = true
+			} else if s.Ports[i].Name == "metrics" {
+				foundMetrics = true
+			}
+		}
+		if !foundClient {
+			ports := v1.ContainerPort{Name: "client", ContainerPort: 2181}
+			s.Ports = append(s.Ports, ports)
+			changed = true
+		}
+		if !foundQuorum {
+			ports := v1.ContainerPort{Name: "quorum", ContainerPort: 2888}
+			s.Ports = append(s.Ports, ports)
+			changed = true
+		}
+		if !foundLeader {
+			ports := v1.ContainerPort{Name: "leader-election", ContainerPort: 3888}
+			s.Ports = append(s.Ports, ports)
+			changed = true
+		}
+		if !foundMetrics {
+			ports := v1.ContainerPort{Name: "metrics", ContainerPort: 7000}
+			s.Ports = append(s.Ports, ports)
+			changed = true
+		}
 	}
+
 	if z.Spec.Labels == nil {
 		z.Spec.Labels = map[string]string{}
 		changed = true
@@ -159,6 +199,8 @@ func (z *ZookeeperCluster) ZookeeperPorts() Ports {
 			ports.Quorum = p.ContainerPort
 		} else if p.Name == "leader-election" {
 			ports.Leader = p.ContainerPort
+		} else if p.Name == "metrics" {
+			ports.Metrics = p.ContainerPort
 		}
 	}
 	return ports
@@ -171,9 +213,10 @@ func (z *ZookeeperCluster) GetClientServiceName() string {
 
 // Ports groups the ports for a zookeeper cluster node for easy access
 type Ports struct {
-	Client int32
-	Quorum int32
-	Leader int32
+	Client  int32
+	Quorum  int32
+	Leader  int32
+	Metrics int32
 }
 
 // ContainerImage defines the fields needed for a Docker repository image. The
@@ -242,7 +285,7 @@ type PodPolicy struct {
 
 	// TerminationGracePeriodSeconds is the amount of time that kubernetes will
 	// give for a pod instance to shutdown normally.
-	// The default value is 180.
+	// The default value is 30.
 	TerminationGracePeriodSeconds int64 `json:"terminationGracePeriodSeconds"`
 }
 

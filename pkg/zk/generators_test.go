@@ -16,7 +16,8 @@ import (
 	"github.com/pravega/zookeeper-operator/pkg/apis/zookeeper/v1beta1"
 	"github.com/pravega/zookeeper-operator/pkg/utils"
 	"github.com/pravega/zookeeper-operator/pkg/zk"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
+	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	. "github.com/onsi/ginkgo"
@@ -138,7 +139,7 @@ var _ = Describe("Generators Spec", func() {
 		})
 
 		It("should have a client port", func() {
-			p, err := utils.ServicePortByName(s.Spec.Ports, "client")
+			p, err := utils.ServicePortByName(s.Spec.Ports, "tcp-client")
 			Ω(err).To(BeNil())
 			Ω(p.Port).To(BeEquivalentTo(2181))
 		})
@@ -176,16 +177,28 @@ var _ = Describe("Generators Spec", func() {
 			s = zk.MakeHeadlessService(z)
 		})
 
+		It("should have a client port", func() {
+			p, err := utils.ServicePortByName(s.Spec.Ports, "tcp-client")
+			Ω(err).To(BeNil())
+			Ω(p.Port).To(BeEquivalentTo(2181))
+		})
+
 		It("should have a quorum port", func() {
-			p, err := utils.ServicePortByName(s.Spec.Ports, "quorum")
+			p, err := utils.ServicePortByName(s.Spec.Ports, "tcp-quorum")
 			Ω(err).To(BeNil())
 			Ω(p.Port).To(BeEquivalentTo(2888))
 		})
 
 		It("should have a leader port", func() {
-			p, err := utils.ServicePortByName(s.Spec.Ports, "leader-election")
+			p, err := utils.ServicePortByName(s.Spec.Ports, "tcp-leader-election")
 			Ω(err).To(BeNil())
 			Ω(p.Port).To(BeEquivalentTo(3888))
+		})
+
+		It("should have a metrics port", func() {
+			p, err := utils.ServicePortByName(s.Spec.Ports, "tcp-metrics")
+			Ω(err).To(BeNil())
+			Ω(p.Port).To(BeEquivalentTo(7000))
 		})
 
 		It("should have a the client svc name", func() {
@@ -201,5 +214,36 @@ var _ = Describe("Generators Spec", func() {
 				"external-dns.alpha.kubernetes.io/hostname",
 				"example-headless.zk.com."))
 		})
+	})
+
+	Context("#MakePodDisruptionBudget", func() {
+		var pdb *policyv1beta1.PodDisruptionBudget
+		var domainName string
+		var zkClusterName string
+
+		BeforeEach(func() {
+			domainName = "zk.com."
+			z := &v1beta1.ZookeeperCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "example",
+					Namespace: "default",
+				},
+				Spec: v1beta1.ZookeeperClusterSpec{
+					DomainName: domainName,
+				},
+			}
+			z.WithDefaults()
+			pdb = zk.MakePodDisruptionBudget(z)
+			zkClusterName = z.GetName()
+		})
+
+		It("should have kind PodDisruptionBudget", func() {
+			Ω(pdb.GetObjectKind().GroupVersionKind().Kind).To(Equal("PodDisruptionBudget"))
+		})
+
+		It("should have slector is zookeeper cluster name", func() {
+			Ω(pdb.Spec.Selector.MatchLabels["app"]).To(BeEquivalentTo(zkClusterName))
+		})
+
 	})
 })

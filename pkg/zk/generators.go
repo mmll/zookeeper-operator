@@ -21,7 +21,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -163,7 +162,7 @@ func makeZkPodSpec(z *v1beta1.ZookeeperCluster) v1.PodSpec {
 func MakeClientService(z *v1beta1.ZookeeperCluster) *v1.Service {
 	ports := z.ZookeeperPorts()
 	svcPorts := []v1.ServicePort{
-		{Name: "client", Port: ports.Client},
+		{Name: "tcp-client", Port: ports.Client},
 	}
 	return makeService(z.GetClientServiceName(), svcPorts, true, z)
 }
@@ -193,8 +192,10 @@ func MakeConfigMap(z *v1beta1.ZookeeperCluster) *v1.ConfigMap {
 func MakeHeadlessService(z *v1beta1.ZookeeperCluster) *v1.Service {
 	ports := z.ZookeeperPorts()
 	svcPorts := []v1.ServicePort{
-		{Name: "quorum", Port: ports.Quorum},
-		{Name: "leader-election", Port: ports.Leader},
+		{Name: "tcp-client", Port: ports.Client},
+		{Name: "tcp-quorum", Port: ports.Quorum},
+		{Name: "tcp-leader-election", Port: ports.Leader},
+		{Name: "tcp-metrics", Port: ports.Metrics},
 	}
 	return makeService(headlessSvcName(z), svcPorts, false, z)
 }
@@ -205,6 +206,9 @@ func makeZkConfigString(s v1beta1.ZookeeperClusterSpec) string {
 		"standaloneEnabled=false\n" +
 		"reconfigEnabled=true\n" +
 		"skipACL=yes\n" +
+		"metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider\n" +
+		"metricsProvider.httpPort=7000\n" +
+		"metricsProvider.exportJvmInfo=true\n" +
 		"initLimit=" + strconv.Itoa(s.Conf.InitLimit) + "\n" +
 		"syncLimit=" + strconv.Itoa(s.Conf.SyncLimit) + "\n" +
 		"tickTime=" + strconv.Itoa(s.Conf.TickTime) + "\n" +
@@ -264,14 +268,8 @@ func makeService(name string, ports []v1.ServicePort, clusterIP bool, z *v1beta1
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: z.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(z, schema.GroupVersionKind{
-					Group:   v1beta1.SchemeGroupVersion.Group,
-					Version: v1beta1.SchemeGroupVersion.Version,
-					Kind:    "ZookeeperCluster",
-				}),
-			},
-			Labels:      map[string]string{"app": z.GetName()},
+
+			Labels:      map[string]string{"app": z.GetName(), "headless": strconv.FormatBool(!clusterIP)},
 			Annotations: annotationMap,
 		},
 		Spec: v1.ServiceSpec{
@@ -296,13 +294,6 @@ func MakePodDisruptionBudget(z *v1beta1.ZookeeperCluster) *policyv1beta1.PodDisr
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      z.GetName(),
 			Namespace: z.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(z, schema.GroupVersionKind{
-					Group:   v1beta1.SchemeGroupVersion.Group,
-					Version: v1beta1.SchemeGroupVersion.Version,
-					Kind:    "ZookeeperCluster",
-				}),
-			},
 		},
 		Spec: policyv1beta1.PodDisruptionBudgetSpec{
 			MaxUnavailable: &pdbCount,
