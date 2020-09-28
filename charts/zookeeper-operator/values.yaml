@@ -14,7 +14,7 @@ image:
 
 ## Install RBAC roles and bindings.
 rbac:
-  create: true
+  create: false
 
 ## Service account name and whether to create it.
 serviceAccount:
@@ -25,7 +25,7 @@ serviceAccount:
 
 ## Whether to create the CRD.
 crd:
-  create: true
+  create: false
 
 ## Specifies which namespace(s) the Operator should watch over.
 ## Default: An empty string means all namespaces.
